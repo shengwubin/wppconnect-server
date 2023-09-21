@@ -23,6 +23,11 @@ import { callWebHook, startHelper } from './functions';
 import { clientsArray, eventEmitter } from './sessionUtil';
 import Factory from './tokenStore/factory';
 
+//Add your proxies here
+const proxySetting = process.env.PROXY || '';
+const proxyList: string[] = proxySetting.split(';');
+const totalProxies = proxyList.length;
+
 export default class CreateSessionUtil {
   startChatWootClient(client: any) {
     if (client.config.chatWoot && !client._chatWootClient)
@@ -31,6 +36,12 @@ export default class CreateSessionUtil {
         client.session
       );
     return client._chatWootClient;
+  }
+
+  // Rotate proxy
+  static currentProxyIndex = 0;
+  rotateProxy() {
+    CreateSessionUtil.currentProxyIndex = CreateSessionUtil.currentProxyIndex + 1;
   }
 
   async createSessionUtil(
@@ -61,56 +72,60 @@ export default class CreateSessionUtil {
         };
       }
 
-      const wppClient = await create(
-        Object.assign(
-          {},
-          { tokenStore: myTokenStore },
-          req.serverOptions.createOptions,
-          {
-            session: session,
-            deviceName:
-              client.config?.deviceName || req.serverOptions.deviceName,
-            poweredBy:
-              client.config?.poweredBy ||
-              req.serverOptions.poweredBy ||
-              'WPPConnect-Server',
-            catchQR: (
-              base64Qr: any,
-              asciiQR: any,
-              attempt: any,
-              urlCode: string
-            ) => {
-              this.exportQR(req, base64Qr, urlCode, client, res);
-            },
-            onLoadingScreen: (percent: string, message: string) => {
-              req.logger.info(`[${session}] ${percent}% - ${message}`);
-            },
-            statusFind: (statusFind: string) => {
-              try {
-                eventEmitter.emit(
-                  `status-${client.session}`,
-                  client,
-                  statusFind
-                );
-                if (
-                  statusFind === 'autocloseCalled' ||
-                  statusFind === 'desconnectedMobile'
-                ) {
-                  client.status = 'CLOSED';
-                  client.qrcode = null;
-                  client.close();
-                  clientsArray[session] = undefined;
-                }
-                callWebHook(client, req, 'status-find', {
-                  status: statusFind,
-                  session: client.session,
-                });
-                req.logger.info(statusFind + '\n\n');
-              } catch (error) {}
-            },
-          }
-        )
+      const newOptions = Object.assign(
+        {},
+        { tokenStore: myTokenStore },
+        req.serverOptions.createOptions,
+        {
+          session: session,
+          deviceName: client.config?.deviceName || req.serverOptions.deviceName,
+          poweredBy:
+            client.config?.poweredBy ||
+            req.serverOptions.poweredBy ||
+            'WPPConnect-Server',
+          catchQR: (
+            base64Qr: any,
+            asciiQR: any,
+            attempt: any,
+            urlCode: string
+          ) => {
+            this.exportQR(req, base64Qr, urlCode, client, res);
+          },
+          onLoadingScreen: (percent: string, message: string) => {
+            req.logger.info(`[${session}] ${percent}% - ${message}`);
+          },
+          statusFind: (statusFind: string) => {
+            try {
+              eventEmitter.emit(`status-${client.session}`, client, statusFind);
+              if (
+                statusFind === 'autocloseCalled' ||
+                statusFind === 'desconnectedMobile'
+              ) {
+                client.status = 'CLOSED';
+                client.qrcode = null;
+                client.close();
+                clientsArray[session] = undefined;
+              }
+              callWebHook(client, req, 'status-find', {
+                status: statusFind,
+                session: client.session,
+              });
+              req.logger.info(statusFind + '\n\n');
+            } catch (error) {}
+          },
+        }
       );
+
+      const browserArgs = JSON.parse(JSON.stringify(newOptions.browserArgs));
+      if (totalProxies > 0) {
+        const proxy =
+          proxyList[CreateSessionUtil.currentProxyIndex % totalProxies];
+        browserArgs.push(`--proxy-server=${proxy}`);
+        newOptions.browserArgs = browserArgs;
+      }
+      this.rotateProxy();
+      console.log(newOptions);
+      const wppClient = await create(newOptions);
 
       client = clientsArray[session] = Object.assign(wppClient, client);
       await this.start(req, client);
