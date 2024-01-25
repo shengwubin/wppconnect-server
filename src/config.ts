@@ -22,6 +22,11 @@ export default {
     onRevokedMessage: true,
     onLabelUpdated: true,
     onSelfMessage: false,
+    ignore: ['status@broadcast'],
+  },
+  websocket: {
+    autoDownload: false,
+    uploadS3: false,
   },
   chatwoot: {
     sendQrCode: true,

@@ -23,6 +23,11 @@ export interface ServerOptions {
     onPollResponse: boolean;
     onRevokedMessage: boolean;
     onSelfMessage: boolean;
+    ignore: string[];
+  };
+  websocket: {
+    autoDownload: boolean;
+    uploadS3: boolean;
   };
   archive: {
     enable: boolean;
